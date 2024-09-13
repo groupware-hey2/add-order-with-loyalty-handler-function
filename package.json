@@ -1,0 +1,31 @@
+{
+  "name": "add-order-with-loyalty-handler",
+  "version": "1.0.0",
+  "description": "Add order with loyalty handler",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dist": "rimraf dist && tsc -p tsconfig.json && cpy package.json dist && cpy './node_modules/' dist && node scripts/zip.js",
+    "zip": "node scripts/zip.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.504.0",
+    "@aws-sdk/lib-dynamodb": "^3.504.0",
+    "aws-sdk": "^2.1549.0",
+    "axios": "^1.6.8",
+    "google-auth-library": "^9.9.0",
+    "ts-node": "^10.9.2"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.132",
+    "@types/node": "^20.11.10",
+    "@types/uuid": "^9.0.8",
+    "archiver": "^6.0.1",
+    "concurrently": "^8.2.2",
+    "cpy-cli": "^5.0.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
+  }
+}
