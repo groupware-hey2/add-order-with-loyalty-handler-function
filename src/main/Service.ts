@@ -7,6 +7,7 @@ import { CustomerRepository } from "./repositories/CustomerRepository";
 import { AccountCustomerRepository } from "./repositories/AccountCustomerRepository";
 import { AccountSettingRepository } from "./repositories/AccountSettingRepository";
 import { WhatsappWorkflowRepository } from "./repositories/WhatsappWorkflowRepository";
+import { CustomerIdentificationRepository } from "./repositories/CustomerIdentificationRepository";
 import { Hey2FlowApi } from "./Hey2FlowApi";
 import { FcmGoogleApi } from "./FcmGoogleApi";
 
@@ -19,6 +20,7 @@ export class Service {
   private accountCustomerRepository: AccountCustomerRepository;
   private accountSettingRepository: AccountSettingRepository;
   private whatsappWorkflowRepository: WhatsappWorkflowRepository;
+  private customerIdentificationRepository: CustomerIdentificationRepository;
   private hey2FlowApi: Hey2FlowApi;
   private fcmGoogleApi: FcmGoogleApi;
   private accountId: string;
@@ -28,6 +30,7 @@ export class Service {
     , accountCustomerRepository: AccountCustomerRepository
     , accountSettingRepository: AccountSettingRepository
     , whatsappWorkflowRepository: WhatsappWorkflowRepository
+    , customerIdentificationRepository: CustomerIdentificationRepository
     , hey2FlowApi: Hey2FlowApi
     , fcmGoogleApi: FcmGoogleApi
     , accountId: string) {
@@ -36,12 +39,13 @@ export class Service {
       this.accountCustomerRepository = accountCustomerRepository;
       this.accountSettingRepository = accountSettingRepository;
       this.whatsappWorkflowRepository = whatsappWorkflowRepository;
+      this.customerIdentificationRepository = customerIdentificationRepository;
       this.hey2FlowApi = hey2FlowApi;
       this.fcmGoogleApi = fcmGoogleApi;
       this.accountId = accountId;
   }
 
-    invoke = async (order: any) => {
+    invoke = async (order: any, customer: any) => {
         console.log('--Service :: add-order-handler');
         try {
           const accountSetting = await this.accountSettingRepository.get(this.accountId);
@@ -53,6 +57,23 @@ export class Service {
         // await this.processCustomer(order.clientCellPhone, this.accountId, order.placeId);
         await this.fcmGoogleApi.send(this.accountId);
         await this.sendDataToDap(this.accountId, {...order, rowRegisterTime: Math.floor(order.createdTime/1000)}, 'order', 'CREATE');
+
+        const customer_ = await this.customerRepository.get(customer.cellPhone); 
+        await this.customerRepository.save({...customer_, ...customer});
+
+        if (customer?.identification != null && customer?.identification.length != 0) {
+          await this.customerIdentificationRepository.save({cellPhone: customer.cellPhone, identification: customer.identification});
+        }
+
+        const accountCustomer = await this.accountCustomerRepository.get(this.accountId, customer.cellPhone); 
+        if (!accountCustomer) {
+          console.log('--AccountCustomer no exist');
+          var dateTime = new Date();
+          let createdTime = dateTime.getTime();
+          await this.accountCustomerRepository.save({accountId: this.accountId, cellPhone: customer.cellPhone, createdAt: dateTime.toISOString(), createdTime, loyaltyProgramAccepted: false}); 
+        } else {
+          await this.accountCustomerRepository.save({...accountCustomer, loyaltyProgramAccepted: accountCustomer.loyaltyProgramAccepted ? accountCustomer.loyaltyProgramAccepted : false}); 
+        }
     }
 
     processCustomer = async (cellPhone: string, accountId: string, placeId: number) => {
