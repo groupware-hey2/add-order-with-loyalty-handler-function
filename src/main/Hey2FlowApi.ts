@@ -11,7 +11,7 @@ export class Hey2FlowApi {
 
     execute = async (accountId: string, placeId: number, flowId: string, to: string, retryCount: number = 0): Promise<any | null> => {
         console.log(`--execute:`);
-        axios.defaults.timeout = 5000; // 5 second
+        axios.defaults.timeout = 8000; // 8 second
         try {
             const { data, status } = await axios.post(`${this.apiUrl}/flows/${flowId}/execute?accountId=${accountId}&placeId=${placeId}`
                                                     , JSON.stringify({

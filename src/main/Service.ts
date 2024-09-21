@@ -58,12 +58,11 @@ export class Service {
         await this.fcmGoogleApi.send(this.accountId);
         await this.sendDataToDap(this.accountId, {...order, rowRegisterTime: Math.floor(order.createdTime/1000)}, 'order', 'CREATE');
 
-        const customer_ = await this.customerRepository.get(customer.cellPhone); 
-        await this.customerRepository.save({...customer_, ...customer});
-
         if (customer?.identification != null && customer?.identification.length != 0) {
           await this.customerIdentificationRepository.save({cellPhone: customer.cellPhone, identification: customer.identification});
         }
+
+        await this.processCustomer(customer, this.accountId, order.placeId);
 
         const accountCustomer = await this.accountCustomerRepository.get(this.accountId, customer.cellPhone); 
         if (!accountCustomer) {
@@ -76,23 +75,24 @@ export class Service {
         }
     }
 
-    processCustomer = async (cellPhone: string, accountId: string, placeId: number) => {
+    processCustomer = async (customer: any, accountId: string, placeId: number) => {
       try {
         var dateTime = new Date();
         let createdTime = dateTime.getTime();
-        const customer = await this.customerRepository.get(cellPhone); 
-        if (!customer) {
+        const customer_ = await this.customerRepository.get(customer?.cellPhone); 
+        
+        if (!customer_) {
             console.log('--Customer no exist');
-            await this.customerRepository.save({cellPhone, createdAt: dateTime.toISOString(), createdTime}); 
+            // await this.customerRepository.save({cellPhone, createdAt: dateTime.toISOString(), createdTime}); 
 
             const listActiveWorkflow = await this.whatsappWorkflowRepository.list(accountId) as any[];
             const filteredWorkflows = listActiveWorkflow.filter(workflow => workflow.type === 'FORM');
             if (filteredWorkflows.length > 0) {
               const index = Math.floor(Math.random() * filteredWorkflows.length);
-              await this.hey2FlowApi.execute(accountId, placeId, filteredWorkflows[index].id, cellPhone);
+              await this.hey2FlowApi.execute(accountId, placeId, filteredWorkflows[index].id, customer?.cellPhone);
             }
 
-            await this.sendDataToDap("main", {cellPhone, createdAt: dateTime.toISOString(), createdTime: Math.floor(createdTime/1000), rowRegisterTime: Math.floor(createdTime/1000)}, 'customer', 'CREATE');
+            await this.sendDataToDap("main", {...customer, createdAt: dateTime.toISOString(), createdTime: Math.floor(createdTime/1000), rowRegisterTime: Math.floor(createdTime/1000)}, 'customer', 'CREATE');
             // await this.sendDataToDap(accountId, {cellPhone, createdAt: dateTime.toISOString(), createdTime: Math.floor(createdTime/1000), rowRegisterTime: Math.floor(createdTime/1000)}, 'account-customer', 'CREATE');
         } else {
           if (!customer.termsAndConditionsAccepted) {
@@ -100,15 +100,18 @@ export class Service {
             const filteredWorkflows = listActiveWorkflow.filter(workflow => workflow.type === 'FORM');
             if (filteredWorkflows.length > 0) {
               const index = Math.floor(Math.random() * filteredWorkflows.length);
-              await this.hey2FlowApi.execute(accountId, placeId, filteredWorkflows[index].id, cellPhone);
+              await this.hey2FlowApi.execute(accountId, placeId, filteredWorkflows[index].id, customer?.cellPhone);
             }
           }
         }
 
-        const accountCustomer = await this.accountCustomerRepository.get(accountId, cellPhone); 
+        await this.customerRepository.save({...customer_, ...customer});
+        console.log('--customerRepository save');
+
+        const accountCustomer = await this.accountCustomerRepository.get(accountId, customer?.cellPhone); 
         if (!accountCustomer) {
           console.log('--AccountCustomer no exist');
-          await this.accountCustomerRepository.save({accountId, cellPhone, createdAt: dateTime.toISOString(), createdTime}); 
+          await this.accountCustomerRepository.save({accountId, cellPhone: customer?.cellPhone, placeId, createdAt: dateTime.toISOString(), createdTime}); 
         }
 
       } catch (error: any) {
