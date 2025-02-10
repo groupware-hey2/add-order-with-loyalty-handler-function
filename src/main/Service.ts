@@ -95,7 +95,7 @@ export class Service {
             await this.sendDataToDap("main", {...customer, createdAt: dateTime.toISOString(), createdTime: Math.floor(createdTime/1000), rowRegisterTime: Math.floor(createdTime/1000)}, 'customer', 'CREATE');
             // await this.sendDataToDap(accountId, {cellPhone, createdAt: dateTime.toISOString(), createdTime: Math.floor(createdTime/1000), rowRegisterTime: Math.floor(createdTime/1000)}, 'account-customer', 'CREATE');
         } else {
-          if (!customer.termsAndConditionsAccepted) {
+          if (!customer_.termsAndConditionsAccepted) {
             const listActiveWorkflow = await this.whatsappWorkflowRepository.list(accountId) as any[];
             const filteredWorkflows = listActiveWorkflow.filter(workflow => workflow.type === 'FORM');
             if (filteredWorkflows.length > 0) {
