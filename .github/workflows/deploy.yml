@@ -1,0 +1,229 @@
+name: deploy-lambda-function
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  deploy-template:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    strategy:
+      matrix:
+        include:
+          - branch: develop
+            environment: dev
+            bucket_suffix: dev
+            environment_var: DEV
+            aws_region: us-east-1
+          - branch: main
+            environment: prod
+            bucket_suffix: prod
+            environment_var: PROD
+            aws_region: us-east-1
+    
+    environment: ${{ matrix.environment }}
+
+    steps:
+      - name: 'Validate Matrix Entry for Branch'
+        id: should_run
+        run: |
+          if [[ "${GITHUB_REF}" == "refs/heads/${{ matrix.branch }}" ]]; then
+            echo "run_step=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_step=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 'Debug'
+        id: 'debug'
+        if: steps.should_run.outputs.run_step == 'true'
+        run: |
+          echo "Branch: ${{matrix.environment}}"
+          echo "Environment var: ${{matrix.environment_var}}"
+          echo "Var: ${{ secrets[format('AWS_ACCESS_KEY_ID_{0}', matrix.environment_var)] }}"
+      - name: 'Checkout'
+        uses: 'actions/checkout@v3'
+
+      - name: Configure AWS credentials
+        id: 'configure-aws-credentials'
+        if: steps.should_run.outputs.run_step == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets[format('AWS_ACCESS_KEY_ID_{0}', matrix.environment_var)] }}
+          aws-secret-access-key: ${{ secrets[format('AWS_SECRET_ACCESS_KEY_{0}', matrix.environment_var)] }}
+          aws-region: ${{ matrix.aws_region }}
+
+      - name: 'Set up Node.js'
+        id: 'set-up-node'
+        if: steps.should_run.outputs.run_step == 'true'
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: 'Install dependencies'
+        id: 'install-dependencies'
+        if: steps.should_run.outputs.run_step == 'true'
+        run: npm install
+
+      - name: Run npm run dist
+        id: 'run-npm-run-dist'
+        if: steps.should_run.outputs.run_step == 'true'
+        run: npm run dist
+
+      - name: 'Verify if IAM Role exists'
+        id: 'verify-if-role-exists'
+        if: steps.should_run.outputs.run_step == 'true'
+        run: |
+          ROLE_NAME="add_order_with_loyalty_handler_exec_role"
+          EXISTING_ROLE=$(aws iam get-role --role-name "$ROLE_NAME" 2>/dev/null || echo "null")
+          if [ "$EXISTING_ROLE" = "null" ]; then
+            echo "Role does not exist."
+            echo "create_role=true" >> $GITHUB_ENV
+          else
+            echo "Role exists."
+            echo "create_role=false" >> $GITHUB_ENV
+          fi
+
+      - name: 'Create IAM Role if not exists'
+        id: 'create-if-role-not-exists'
+        if: env.create_role == 'true'
+        run: |
+          ROLE_NAME="add_order_with_loyalty_handler_exec_role"
+          TRUST_POLICY=$(cat <<EOF
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "lambda.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+          EOF
+          )
+          aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document "$TRUST_POLICY"
+
+      - name: 'Attach IAM Role Policy'
+        id: 'attach-role-policy'
+        if: steps.should_run.outputs.run_step == 'true'
+        run: |
+          ROLE_NAME="add_order_with_loyalty_handler_exec_role"
+          POLICY_NAME="default"
+          POLICY_DOCUMENT=$(cat <<EOF
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "logs:CreateLogGroup",
+                  "logs:CreateLogStream",
+                  "logs:DescribeLogGroups",
+                  "logs:DescribeLogStreams",
+                  "logs:PutLogEvents",
+                  "logs:GetLogEvents",
+                  "logs:FilterLogEvents",
+                  "sqs:SendMessage",
+                  "sqs:ReceiveMessage",
+                  "sqs:DeleteMessage",
+                  "sqs:GetQueueAttributes",
+                  "dynamodb:BatchGetItem",
+                  "dynamodb:GetItem",
+                  "dynamodb:Query",
+                  "dynamodb:Scan",
+                  "dynamodb:BatchWriteItem",
+                  "dynamodb:PutItem",
+                  "dynamodb:UpdateItem",
+                  "kms:Decrypt"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+          EOF
+          )
+          aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" --policy-document "$POLICY_DOCUMENT"
+
+      - name: Check if Lambda function exists
+        id: 'check-lambda'
+        if: steps.should_run.outputs.run_step == 'true'
+        run: |
+          FUNCTION_NAME="add-order-with-loyalty-handler-function"
+          EXISTING_FUNCTION=$(aws lambda get-function --function-name "$FUNCTION_NAME" 2>/dev/null || echo "null")
+          if [ "$EXISTING_FUNCTION" = "null" ]; then
+            echo "Function does not exist."
+            echo "update_lambda=false" >> $GITHUB_ENV
+          else
+            echo "Function exists."
+            echo "update_lambda=true" >> $GITHUB_ENV
+          fi
+
+      - name: 'Get AWS Account ID'
+        id: 'get-aws-account-id'
+        if: steps.should_run.outputs.run_step == 'true'
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          echo "account_id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+
+      - name: Wait for IAM propagation
+        run: sleep 15
+
+      - name: 'Deploy Lambda'
+        id: 'deploy-lambda'
+        if: env.update_lambda == 'false'
+        run: |
+          aws lambda create-function \
+            --function-name add-order-with-loyalty-handler-function \
+            --runtime nodejs20.x \
+            --role arn:aws:iam::${{ steps.get-aws-account-id.outputs.account_id }}:role/add_order_with_loyalty_handler_exec_role \
+            --handler index.handler \
+            --zip-file fileb://add-order-with-loyalty-handler.zip
+
+      - name: 'Update Lambda function code'
+        id: 'update-lambda-function-code'
+        if: env.update_lambda == 'true'
+        run: |
+          aws lambda update-function-code \
+            --function-name add-order-with-loyalty-handler-function \
+            --zip-file fileb://add-order-with-loyalty-handler.zip
+
+      - name: Check if SQS Trigger exists
+        id: 'check-sqs-trigger'
+        if: steps.should_run.outputs.run_step == 'true'
+        run: |
+          FUNCTION_NAME="add-order-with-loyalty-handler-function"
+          QUEUE_NAME="hey2-${{matrix.environment}}-add-order-with-loyalty-queue"
+          QUEUE_ARN=$(aws sqs get-queue-attributes \
+            --queue-url $(aws sqs get-queue-url --queue-name "$QUEUE_NAME" --query 'QueueUrl' --output text) \
+            --attribute-name QueueArn \
+            --query 'Attributes.QueueArn' \
+            --output text)
+          EXISTING_TRIGGER=$(aws lambda list-event-source-mappings \
+            --function-name "$FUNCTION_NAME" \
+            --query "EventSourceMappings[?EventSourceArn=='$QUEUE_ARN'] | length(@)" \
+            --output text)
+          if [ "$EXISTING_TRIGGER" = "null" ]; then
+            echo "Trigger does not exist."
+            echo "add_trigger=false" >> $GITHUB_ENV
+          else
+            echo "Trigger exists."
+            echo "add_trigger=true" >> $GITHUB_ENV
+          fi
+
+      - name: Add SQS Trigger to Lambda
+        id: 'add-sqs-trigger-to-lambda'
+        if: env.add_trigger == 'false'
+        run: |
+          FUNCTION_NAME="add-order-with-loyalty-handler-function"
+          QUEUE_NAME="hey2-${{matrix.environment}}-add-order-with-loyalty-queue"
+          QUEUE_ARN="arn:aws:sqs:us-east-1:${{ steps.get-aws-account-id.outputs.account_id }}:hey2-${{matrix.environment}}-add-order-with-loyalty-queue"
+          aws lambda create-event-source-mapping \
+              --function-name "$FUNCTION_NAME" \
+              --event-source-arn "$QUEUE_ARN"
+
