@@ -220,6 +220,29 @@ jobs:
           echo "Cola: $QUEUE_NAME ($QUEUE_ARN)"
           echo "queue_arn=$QUEUE_ARN" >> $GITHUB_OUTPUT
 
+      # SQS exige que el VisibilityTimeout de la cola sea >= al timeout de la
+      # Lambda. Solo se toca cuando se queda corto; si ya basta no se cambia,
+      # para no alterar la reentrega de las demas colas.
+      - name: 'Ensure SQS VisibilityTimeout'
+        id: 'ensure-sqs-visibility'
+        if: steps.should_run.outputs.run_step == 'true'
+        run: |
+          QUEUE_URL=$(aws sqs get-queue-url --queue-name "hey2-${{ matrix.environment }}-add-order-with-loyalty-queue" \
+            --query 'QueueUrl' --output text)
+          VT=$(aws sqs get-queue-attributes --queue-url "$QUEUE_URL" \
+            --attribute-names VisibilityTimeout --query 'Attributes.VisibilityTimeout' --output text)
+          FT=$(aws lambda get-function-configuration --function-name "add-order-with-loyalty-handler-function" \
+            --query 'Timeout' --output text)
+          if [ "$VT" -lt "$FT" ]; then
+            NUEVO=$((FT * 6))
+            [ "$NUEVO" -gt 43200 ] && NUEVO=43200
+            aws sqs set-queue-attributes --queue-url "$QUEUE_URL" \
+              --attributes VisibilityTimeout=$NUEVO
+            echo "VisibilityTimeout $VT -> $NUEVO (timeout de la Lambda: ${FT}s)"
+          else
+            echo "VisibilityTimeout $VT ya cubre el timeout de la Lambda (${FT}s)"
+          fi
+
       - name: 'Create SQS Event Source Mapping'
         id: 'create-sqs-event-source-mapping'
         if: steps.should_run.outputs.run_step == 'true'
