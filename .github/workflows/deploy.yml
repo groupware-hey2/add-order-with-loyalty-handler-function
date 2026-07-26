@@ -176,7 +176,9 @@ jobs:
             --runtime nodejs20.x \
             --role arn:aws:iam::${{ steps.get-aws-account-id.outputs.account_id }}:role/add_order_with_loyalty_handler_exec_role \
             --handler index.handler \
-            --zip-file fileb://add-order-with-loyalty-handler.zip
+            --zip-file fileb://add-order-with-loyalty-handler.zip \
+            --timeout 30 \
+            --memory-size 128
 
       - name: 'Update Lambda function code'
         id: 'update-lambda-function-code'
