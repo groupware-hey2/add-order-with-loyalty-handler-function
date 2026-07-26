@@ -200,37 +200,48 @@ jobs:
             --function-name add-order-with-loyalty-handler-function \
             --environment "Variables={MONGODB_URI=${{ secrets[format('MONGODB_URI_{0}', matrix.environment_var)] }},DB_NAME=${{ secrets[format('DB_NAME_{0}', matrix.environment_var)] }}}"
 
-      - name: Check if SQS Trigger exists
-        id: 'check-sqs-trigger'
+      # Conexion con la cola SQS. Los dos pasos anteriores no funcionaban:
+      # comparaban el resultado de `length(@)` (un numero) con la cadena "null",
+      # asi que siempre concluian que el trigger existia y el paso que lo creaba,
+      # condicionado a add_trigger == 'false', no se ejecutaba nunca.
+      - name: 'Get SQS Queue URL and ARN'
+        id: 'get-sqs-queue'
+        if: steps.should_run.outputs.run_step == 'true'
+        run: |
+          QUEUE_NAME="hey2-${{ matrix.environment }}-add-order-with-loyalty-queue"
+          QUEUE_URL=$(aws sqs get-queue-url --queue-name "$QUEUE_NAME" \
+            --query 'QueueUrl' --output text 2>/dev/null || echo "")
+          if [ -z "$QUEUE_URL" ]; then
+            echo "No existe la cola '$QUEUE_NAME'. Hay que crearla primero."
+            exit 1
+          fi
+          QUEUE_ARN=$(aws sqs get-queue-attributes --queue-url "$QUEUE_URL" \
+            --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
+          echo "Cola: $QUEUE_NAME ($QUEUE_ARN)"
+          echo "queue_arn=$QUEUE_ARN" >> $GITHUB_OUTPUT
+
+      - name: 'Create SQS Event Source Mapping'
+        id: 'create-sqs-event-source-mapping'
         if: steps.should_run.outputs.run_step == 'true'
         run: |
           FUNCTION_NAME="add-order-with-loyalty-handler-function"
-          QUEUE_NAME="hey2-${{matrix.environment}}-add-order-with-loyalty-queue"
-          QUEUE_ARN=$(aws sqs get-queue-attributes \
-            --queue-url $(aws sqs get-queue-url --queue-name "$QUEUE_NAME" --query 'QueueUrl' --output text) \
-            --attribute-name QueueArn \
-            --query 'Attributes.QueueArn' \
-            --output text)
-          EXISTING_TRIGGER=$(aws lambda list-event-source-mappings \
-            --function-name "$FUNCTION_NAME" \
-            --query "EventSourceMappings[?EventSourceArn=='$QUEUE_ARN'] | length(@)" \
-            --output text)
-          if [ "$EXISTING_TRIGGER" = "null" ]; then
-            echo "Trigger does not exist."
-            echo "add_trigger=false" >> $GITHUB_ENV
-          else
-            echo "Trigger exists."
-            echo "add_trigger=true" >> $GITHUB_ENV
-          fi
-
-      - name: Add SQS Trigger to Lambda
-        id: 'add-sqs-trigger-to-lambda'
-        if: env.add_trigger == 'false'
-        run: |
-          FUNCTION_NAME="add-order-with-loyalty-handler-function"
-          QUEUE_NAME="hey2-${{matrix.environment}}-add-order-with-loyalty-queue"
-          QUEUE_ARN="arn:aws:sqs:us-east-1:${{ steps.get-aws-account-id.outputs.account_id }}:hey2-${{matrix.environment}}-add-order-with-loyalty-queue"
-          aws lambda create-event-source-mapping \
+          QUEUE_ARN="${{ steps.get-sqs-queue.outputs.queue_arn }}"
+          EXISTING=$(aws lambda list-event-source-mappings \
+            --function-name "$FUNCTION_NAME" --event-source-arn "$QUEUE_ARN" \
+            --query 'EventSourceMappings[0].UUID' --output text 2>/dev/null || echo "None")
+          if [ "$EXISTING" = "None" ] || [ -z "$EXISTING" ]; then
+            aws lambda create-event-source-mapping \
               --function-name "$FUNCTION_NAME" \
-              --event-source-arn "$QUEUE_ARN"
-
+              --event-source-arn "$QUEUE_ARN" \
+              --batch-size 10 \
+              --maximum-batching-window-in-seconds 0 \
+              --enabled
+            echo "Trigger creado."
+          else
+            aws lambda update-event-source-mapping \
+              --uuid "$EXISTING" \
+              --batch-size 10 \
+              --maximum-batching-window-in-seconds 0 \
+              --enabled
+            echo "Trigger ya existia ($EXISTING); actualizado."
+          fi
