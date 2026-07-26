@@ -11,11 +11,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.504.0",
-    "@aws-sdk/lib-dynamodb": "^3.504.0",
     "aws-sdk": "^2.1549.0",
     "axios": "^1.6.8",
     "google-auth-library": "^9.9.0",
+    "mongodb": "^6.0.0",
     "ts-node": "^10.9.2"
   },
   "devDependencies": {

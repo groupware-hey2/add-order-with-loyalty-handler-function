@@ -1,6 +1,6 @@
 
 import { SQSEvent, Context } from 'aws-lambda';
-import { DynamoDbConnector } from "./dynamodb/DynamoDbConnector";
+import { DatabaseConnection } from "./mongodb/DatabaseConnection";
 import { Service } from "./Service";
 import { OrderRepository } from "./repositories/OrderRepository";
 import { CustomerRepository } from "./repositories/CustomerRepository";
@@ -14,7 +14,7 @@ import { FcmGoogleApi } from "./FcmGoogleApi";
 export const handler = async (event: SQSEvent, context: Context) => {
   console.log(`--handler :: add-order-handler ${JSON.stringify(event)}`);
 
-  const dbConnect = await new DynamoDbConnector().getConnection();
+  const dbConnect = await DatabaseConnection.getInstance();
   console.log(`--handler dbConnect`);
 
   for (const record of event.Records) {

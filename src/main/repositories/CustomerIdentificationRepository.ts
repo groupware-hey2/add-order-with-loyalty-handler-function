@@ -1,40 +1,46 @@
-import { DynamoDBDocumentClient 
-    , PutCommand
-    , QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { DatabaseConnection } from '../mongodb/DatabaseConnection';
 
 
 export class CustomerIdentificationRepository {
 
-    private dbClient: DynamoDBDocumentClient;
+    private dbClient: DatabaseConnection;
 
-    constructor(dbClient: DynamoDBDocumentClient) {
+    constructor(dbClient: DatabaseConnection) {
         this.dbClient = dbClient;
     }
 
     save = async (customerIdentification: any) => {
-        await this.dbClient.send(
-            new PutCommand({
-                TableName: `customer-identification`,
-                Item: customerIdentification,
-            })
+        const db = await this.dbClient.connect();
+
+        await db.collection(`customer-identification`).replaceOne(
+            {
+                "identification": customerIdentification.identification,
+                "cellPhone": customerIdentification.cellPhone
+            },
+            customerIdentification,
+            { upsert: true }
         );
     }
 
     getAll = async (identification: string) : Promise<Record<string, any>[] | undefined> => {
         console.log(`--getAll`);
-        const command = new QueryCommand({
-            ProjectionExpression: "identification, cellPhone"
-            , TableName: `customer-identification`
-            , KeyConditionExpression: "#pk = :pk"
-            , ExpressionAttributeNames: {
-                "#pk": "identification", 
-            }
-            , ExpressionAttributeValues: {
-                ":pk": identification, 
-            }
-        });
 
-        const { Items }  = await this.dbClient.send(command);
-        return Items;
+        const db = await this.dbClient.connect();
+
+        // Query ordenado ascendentemente por la sort key (cellPhone).
+        // ProjectionExpression "identification, cellPhone".
+        return await db.collection(`customer-identification`)
+            .find(
+                { "identification": identification },
+                {
+                    projection: {
+                        _id: 0
+                        , identification: 1
+                        , cellPhone: 1
+                    }
+                }
+            )
+            .sort({ "cellPhone": 1 })
+            .toArray();
     }
 }

@@ -133,13 +133,6 @@ jobs:
                   "sqs:ReceiveMessage",
                   "sqs:DeleteMessage",
                   "sqs:GetQueueAttributes",
-                  "dynamodb:BatchGetItem",
-                  "dynamodb:GetItem",
-                  "dynamodb:Query",
-                  "dynamodb:Scan",
-                  "dynamodb:BatchWriteItem",
-                  "dynamodb:PutItem",
-                  "dynamodb:UpdateItem",
                   "kms:Decrypt"
                 ],
                 "Resource": "*"
@@ -192,6 +185,18 @@ jobs:
           aws lambda update-function-code \
             --function-name add-order-with-loyalty-handler-function \
             --zip-file fileb://add-order-with-loyalty-handler.zip
+
+      # La función lee MONGODB_URI de entorno y no tiene valor por defecto:
+      # sin esta variable no arranca. Ver MIGRATION-MAPPING.md §8.1.
+      - name: 'Set MongoDB environment variables'
+        id: 'set-mongodb-env'
+        if: steps.should_run.outputs.run_step == 'true'
+        run: |
+          aws lambda wait function-updated \
+            --function-name add-order-with-loyalty-handler-function
+          aws lambda update-function-configuration \
+            --function-name add-order-with-loyalty-handler-function \
+            --environment "Variables={MONGODB_URI=${{ secrets[format('MONGODB_URI_{0}', matrix.environment_var)] }},DB_NAME=${{ secrets[format('DB_NAME_{0}', matrix.environment_var)] }}}"
 
       - name: Check if SQS Trigger exists
         id: 'check-sqs-trigger'

@@ -1,38 +1,40 @@
-import { DynamoDBDocumentClient 
-    , PutCommand
-    , GetCommand} from "@aws-sdk/lib-dynamodb";
+import { DatabaseConnection } from '../mongodb/DatabaseConnection';
 
 
 export class AccountCustomerRepository {
 
-    private dbClient: DynamoDBDocumentClient;
+    private dbClient: DatabaseConnection;
     private accountId: String;
 
-    constructor(dbClient: DynamoDBDocumentClient, accountId: string) {
+    constructor(dbClient: DatabaseConnection, accountId: string) {
         this.dbClient = dbClient;
         this.accountId = accountId;
     }
 
     save = async (customer: any) => {
-        await this.dbClient.send(
-            new PutCommand({
-                TableName: `account-customer`,
-                Item: customer,
-            })
+        const db = await this.dbClient.connect();
+
+        await db.collection(`account-customer`).replaceOne(
+            {
+                "accountId": customer.accountId,
+                "cellPhone": customer.cellPhone
+            },
+            customer,
+            { upsert: true }
         );
     }
 
     get = async (accountId: string, cellPhone: string) => {
-        const response = await this.dbClient.send(
-            new GetCommand({
-                TableName: `account-customer`,
-                Key: {
-                    "accountId": accountId,
-                    "cellPhone": cellPhone
-                },
-            })
+        const db = await this.dbClient.connect();
+
+        const item = await db.collection(`account-customer`).findOne(
+            {
+                "accountId": accountId,
+                "cellPhone": cellPhone
+            },
+            { projection: { _id: 0 } }
         );
-      
-        return response.Item;
+
+        return item ?? undefined;
     };
 }

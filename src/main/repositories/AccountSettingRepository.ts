@@ -1,25 +1,24 @@
-import { DynamoDBDocumentClient 
-    , GetCommand} from "@aws-sdk/lib-dynamodb";
+import { DatabaseConnection } from '../mongodb/DatabaseConnection';
 
 
 export class AccountSettingRepository {
 
-    private dbClient: DynamoDBDocumentClient;
+    private dbClient: DatabaseConnection;
 
-    constructor(dbClient: DynamoDBDocumentClient) {
+    constructor(dbClient: DatabaseConnection) {
         this.dbClient = dbClient;
     }
 
     get = async (accountId: string) => {
-        const response = await this.dbClient.send(
-            new GetCommand({
-                TableName: `account-setting`,
-                Key: {
-                    "accountId": accountId
-                },
-            })
+        const db = await this.dbClient.connect();
+
+        const item = await db.collection(`account-setting`).findOne(
+            {
+                "accountId": accountId
+            },
+            { projection: { _id: 0 } }
         );
-      
-        return response.Item;
+
+        return item ?? undefined;
     };
 }

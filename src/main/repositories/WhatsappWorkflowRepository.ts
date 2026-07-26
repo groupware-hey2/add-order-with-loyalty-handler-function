@@ -1,33 +1,29 @@
-import { DynamoDBDocumentClient 
-    , QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { DatabaseConnection } from '../mongodb/DatabaseConnection';
 
 
 export class WhatsappWorkflowRepository {
 
-    private dbClient: DynamoDBDocumentClient;
+    private dbClient: DatabaseConnection;
 
-    constructor(dbClient: DynamoDBDocumentClient) {
+    constructor(dbClient: DatabaseConnection) {
         this.dbClient = dbClient;
     }
 
     list = async (accountId: string) => {
-        const command = new QueryCommand({
-            TableName: `whatsapp-workflow`,
-            KeyConditionExpression: "#pk = :pk",
-            FilterExpression: "#status = :status",
-            ExpressionAttributeNames: {
-                "#pk": "accountId", 
-                "#status": "status",
-            },
-            ExpressionAttributeValues: {
-                ":pk": accountId, 
-                ":status": "ACTIVE",
-            },
-            ConsistentRead: true,
-            ScanIndexForward: true,
-          });
+        const db = await this.dbClient.connect();
 
-        const { Items }  = await this.dbClient.send(command);
-        return Items;
+        // KeyConditionExpression "#pk = :accountId" + FilterExpression
+        // "#status = :status": el filtro se suma a la misma condición del find.
+        // ScanIndexForward: true -> orden ascendente por la sort key (id).
+        return await db.collection(`whatsapp-workflow`)
+            .find(
+                {
+                    "accountId": accountId,
+                    "status": "ACTIVE"
+                },
+                { projection: { _id: 0 } }
+            )
+            .sort({ "id": 1 })
+            .toArray();
     }
 }

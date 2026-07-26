@@ -1,35 +1,36 @@
-import { DynamoDBDocumentClient 
-    , PutCommand
-    , GetCommand} from "@aws-sdk/lib-dynamodb";
+import { DatabaseConnection } from '../mongodb/DatabaseConnection';
 
 
 export class CustomerRepository {
 
-    private dbClient: DynamoDBDocumentClient;
+    private dbClient: DatabaseConnection;
 
-    constructor(dbClient: DynamoDBDocumentClient) {
+    constructor(dbClient: DatabaseConnection) {
         this.dbClient = dbClient;
     }
 
     save = async (customer: any) => {
-        await this.dbClient.send(
-            new PutCommand({
-                TableName: `customer`,
-                Item: customer,
-            })
+        const db = await this.dbClient.connect();
+
+        await db.collection(`customer`).replaceOne(
+            {
+                "cellPhone": customer.cellPhone
+            },
+            customer,
+            { upsert: true }
         );
     }
 
     get = async (cellPhone: string) => {
-        const response = await this.dbClient.send(
-            new GetCommand({
-                TableName: `customer`,
-                Key: {
-                    "cellPhone": cellPhone
-                },
-            })
+        const db = await this.dbClient.connect();
+
+        const item = await db.collection(`customer`).findOne(
+            {
+                "cellPhone": cellPhone
+            },
+            { projection: { _id: 0 } }
         );
-      
-        return response.Item;
+
+        return item ?? undefined;
     };
 }
