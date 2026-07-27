@@ -131,11 +131,11 @@ export class Service {
                                                               , calledTime: Math.floor(data.calledTime/1000)
                                                               , deliveredAt: data.deliveredAt.replace('T',' ').split('.')[0]
                                                               , deliveredTime: Math.floor(data.deliveredTime/1000)})}, "table":"${table}", "action":"${action}"}`,
-            QueueUrl: 'https://sqs.us-east-1.amazonaws.com/767397894059/hey2-prod-send-data-to-dap-queue'
+            QueueUrl: 'https://sqs.us-east-1.amazonaws.com/603858357127/hey2-dev-send-data-to-dap-queue'
           };
 
           await sqs.sendMessage(params).promise();
-          console.log('--SQS hey2-prod-send-data-to-dap-queue');
+          console.log('--SQS hey2-dev-send-data-to-dap-queue');
       } catch (error) {
           console.error('--Error al enviar el mensaje:', error);
       }
