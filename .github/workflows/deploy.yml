@@ -19,11 +19,13 @@ jobs:
             bucket_suffix: dev
             environment_var: DEV
             aws_region: us-east-1
+            api_url: https://api-dev-diloq.groupware.com.co/v1
           - branch: main
             environment: prod
             bucket_suffix: prod
             environment_var: PROD
             aws_region: us-east-1
+            api_url: https://api-diloq.groupware.com.co/v1
     
     environment: ${{ matrix.environment }}
 
@@ -190,7 +192,7 @@ jobs:
 
       # La función lee MONGODB_URI de entorno y no tiene valor por defecto:
       # sin esta variable no arranca. Ver MIGRATION-MAPPING.md §8.1.
-      - name: 'Set MongoDB environment variables'
+      - name: 'Set Lambda environment variables'
         id: 'set-mongodb-env'
         if: steps.should_run.outputs.run_step == 'true'
         run: |
@@ -198,7 +200,7 @@ jobs:
             --function-name add-order-with-loyalty-handler-function
           aws lambda update-function-configuration \
             --function-name add-order-with-loyalty-handler-function \
-            --environment "Variables={MONGODB_URI=${{ secrets[format('MONGODB_URI_{0}', matrix.environment_var)] }},DB_NAME=${{ secrets[format('DB_NAME_{0}', matrix.environment_var)] }}}"
+            --environment "Variables={MONGODB_URI=${{ secrets[format('MONGODB_URI_{0}', matrix.environment_var)] }},DB_NAME=${{ secrets[format('DB_NAME_{0}', matrix.environment_var)] }},API_URL=${{ matrix.api_url }},SEND_DATA_TO_DAP_QUEUE_URL=https://sqs.${{ matrix.aws_region }}.amazonaws.com/${{ steps.get-aws-account-id.outputs.account_id }}/hey2-${{ matrix.environment }}-send-data-to-dap-queue}"
 
       # Conexion con la cola SQS. Los dos pasos anteriores no funcionaban:
       # comparaban el resultado de `length(@)` (un numero) con la cadena "null",

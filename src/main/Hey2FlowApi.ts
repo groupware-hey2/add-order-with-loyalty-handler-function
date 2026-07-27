@@ -2,7 +2,7 @@
 import axios, { AxiosResponse } from 'axios';
 
 export class Hey2FlowApi {
-    private apiUrl: string = "https://api-dev-diloq.groupware.com.co/v1";
+    private apiUrl: string = process.env.API_URL!!;
     private maxRetries: number = 2;
 
     constructor() {
